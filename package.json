@@ -1,0 +1,13 @@
+{
+  "name": "radar-dance-live",
+  "version": "1.0.0",
+  "description": "Global Broadcast Station for Radar Dance",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
