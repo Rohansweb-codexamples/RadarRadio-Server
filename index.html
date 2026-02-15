@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar Dance | Live Broadcast</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-black text-white selection:bg-pink-500">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Firebase configuration (Fill these in from your Firebase Console)
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        // Initialize Firebase (Compat Version)
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = "radar-dance-radio-v1"; 
+
+        const LOGO_URL = 'https://i.postimg.cc/FKR8GR9k/Gemini-Generated-Image-5oa71q5oa71q5oa7.png';
+
+        function App() {
+            const [view, setView] = useState('player');
+            const [user, setUser] = useState(null);
+            const [stationState, setStationState] = useState({
+                isPlaying: false,
+                currentTrackTitle: 'Station Offline',
+                trackUrl: '',
+                startedAt: null
+            });
+
+            useEffect(() => {
+                const unsubscribe = auth.onAuthStateChanged((u) => {
+                    if (!u) {
+                        auth.signInAnonymously().catch(e => console.error("Auth Error", e));
+                    } else {
+                        setUser(u);
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const stationRef = db.doc(`artifacts/${appId}/public/data/stationControl/currentState`);
+                const unsubscribe = stationRef.onSnapshot((docSnap) => {
+                    if (docSnap.exists) {
+                        setStationState(docSnap.data());
+                    }
+                }, (err) => console.error("Firestore Error:", err));
+                return () => unsubscribe();
+            }, [user]);
+
+            const updateStation = async (newState) => {
+                if (!user) return;
+                const stationRef = db.doc(`artifacts/${appId}/public/data/stationControl/currentState`);
+                try {
+                    await stationRef.set(newState, { merge: true });
+                } catch (err) {
+                    console.error("Update failed", err);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col font-sans">
+                    <nav className="flex justify-between items-center p-6 bg-zinc-950 border-b border-zinc-800 sticky top-0 z-50">
+                        <div className="flex items-center gap-3">
+                            <img src={LOGO_URL} alt="Logo" className="h-10 w-10 rounded-full border border-pink-500" />
+                            <span className="text-xl font-black uppercase tracking-tighter text-pink-500 italic">Radar Dance</span>
+                        </div>
+                        <div className="flex gap-2 bg-zinc-900 p-1 rounded-full text-xs">
+                            <button 
+                                onClick={() => setView('player')} 
+                                className={`px-4 py-2 rounded-full transition-all ${view === 'player' ? 'bg-pink-600 shadow-lg' : 'text-zinc-400'}`}
+                            >
+                                Player
+                            </button>
+                            <button 
+                                onClick={() => setView('admin')} 
+                                className={`px-4 py-2 rounded-full transition-all ${view === 'admin' ? 'bg-zinc-700' : 'text-zinc-400'}`}
+                            >
+                                Admin
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="flex-grow max-w-4xl mx-auto w-full p-8">
+                        {view === 'player' ? (
+                            <PlayerView state={stationState} />
+                        ) : (
+                            <AdminView state={stationState} update={updateStation} />
+                        )}
+                    </main>
+
+                    <footer className="p-6 text-center text-zinc-700 text-xs uppercase tracking-[0.3em]">
+                        &copy; 2024 RADAR DANCE - Global Pulse
+                    </footer>
+                </div>
+            );
+        }
+
+        function PlayerView({ state }) {
+            const audioRef = useRef(null);
+            const [playing, setPlaying] = useState(false);
+
+            const toggle = () => {
+                if (!audioRef.current) return;
+                if (playing) {
+                    audioRef.current.pause();
+                } else {
+                    audioRef.current.play().catch(e => console.log("Playback interaction required"));
+                }
+                setPlaying(!playing);
+            };
+
+            return (
+                <div className="flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-1000">
+                    <div className="relative group">
+                        <div className={`absolute -inset-4 bg-pink-500/20 rounded-full blur-2xl transition-opacity duration-1000 ${state.isPlaying && playing ? 'opacity-100' : 'opacity-0'}`}></div>
+                        <img 
+                            src={LOGO_URL} 
+                            className={`relative w-72 h-72 md:w-96 md:h-96 mx-auto rounded-full border-8 border-zinc-900 shadow-2xl transition-transform duration-[8s] linear infinite ${state.isPlaying && playing ? 'rotate-animation' : ''}`} 
+                        />
+                        {state.isPlaying && (
+                            <div className="absolute top-6 right-6 bg-red-600 px-4 py-1 rounded font-black text-xs uppercase animate-pulse">Live</div>
+                        )}
+                    </div>
+
+                    <div className="text-center space-y-4">
+                        <h1 className="text-4xl md:text-6xl font-black tracking-tight">{state.currentTrackTitle}</h1>
+                        <p className="text-zinc-500 uppercase tracking-widest text-sm">
+                            {state.isPlaying ? 'Now Streaming Worldwide' : 'Broadcasting Paused'}
+                        </p>
+                    </div>
+
+                    <div className="w-full max-w-sm">
+                        <audio ref={audioRef} src={state.trackUrl} crossOrigin="anonymous" />
+                        <button 
+                            onClick={toggle} 
+                            disabled={!state.isPlaying} 
+                            className={`w-full py-6 rounded-3xl font-black uppercase tracking-widest transition-all transform active:scale-95 ${
+                                playing 
+                                ? 'bg-zinc-800 text-white border border-zinc-700' 
+                                : 'bg-white text-black hover:bg-pink-500 hover:text-white shadow-xl'
+                            } disabled:opacity-20 disabled:cursor-not-allowed`}
+                        >
+                            {playing ? 'Stop Listening' : 'Tune In Live'}
+                        </button>
+                    </div>
+
+                    <style>{`
+                        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                        .rotate-animation { animation: rotate 8s linear infinite; }
+                    `}</style>
+                </div>
+            );
+        }
+
+        function AdminView({ state, update }) {
+            const [title, setTitle] = useState(state.currentTrackTitle);
+            const [url, setUrl] = useState(state.trackUrl);
+
+            const goLive = () => {
+                update({ 
+                    isPlaying: true, 
+                    currentTrackTitle: title || 'Unnamed Stream', 
+                    trackUrl: url, 
+                    startedAt: Date.now() 
+                });
+            };
+
+            const stop = () => {
+                update({ 
+                    isPlaying: false, 
+                    currentTrackTitle: 'Station Offline', 
+                    trackUrl: '', 
+                    startedAt: null 
+                });
+            };
+
+            return (
+                <div className="bg-zinc-900/50 p-8 rounded-3xl border border-zinc-800 space-y-8 animate-in slide-in-from-bottom-4">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-pink-500/10 rounded-2xl">
+                            <svg className="w-6 h-6 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-2xl font-bold italic uppercase tracking-tighter">Studio Controls</h2>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Broadcast Title</label>
+                            <input 
+                                value={title} 
+                                onChange={e => setTitle(e.target.value)} 
+                                placeholder="Track or Show Name..." 
+                                className="w-full bg-black p-4 rounded-2xl border border-zinc-800 focus:border-pink-500 outline-none transition-colors" 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Audio Source URL</label>
+                            <input 
+                                value={url} 
+                                onChange={e => setUrl(e.target.value)} 
+                                placeholder="Direct Audio Link (MP3/Stream)..." 
+                                className="w-full bg-black p-4 rounded-2xl border border-zinc-800 focus:border-pink-500 outline-none transition-colors" 
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <button 
+                            onClick={goLive} 
+                            className="flex-1 bg-gradient-to-r from-pink-600 to-violet-600 py-5 rounded-2xl font-black uppercase tracking-tighter shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                        >
+                            Start Broadcast
+                        </button>
+                        <button 
+                            onClick={stop} 
+                            className="px-10 bg-zinc-800 hover:bg-red-900/20 hover:text-red-500 py-5 rounded-2xl font-bold uppercase transition-all"
+                        >
+                            Kill Feed
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
